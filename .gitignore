@@ -1,0 +1,14 @@
+shunt.exe
+*.exe~
+*.test
+coverage.out
+.venv/
+*.log
+
+# Local runtime data when a developer runs shunt with paths inside the checkout.
+/config.toml
+/state.json
+/runtime.json
+/cache/
+/logs/
+/backups/

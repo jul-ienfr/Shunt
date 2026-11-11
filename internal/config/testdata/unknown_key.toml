@@ -1,0 +1,7 @@
+schema = 1
+bogus = true
+default_profile = "local"
+
+[profiles.local]
+label = "Local proxy"
+base_url = "http://127.0.0.1:4000"
