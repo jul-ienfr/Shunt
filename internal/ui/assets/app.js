@@ -54,11 +54,7 @@ function refreshDynamic() {
   updateLanguageButton();
   if (overview) renderOverview(overview);
   if (clientState.loaded) {
-    const grid = $('client-cards');
-    grid.textContent = '';
-    for (const client of clientState.clients) {
-      grid.appendChild(clientCard(client));
-    }
+    renderClients();
   }
   renderModels();
 }
@@ -85,7 +81,10 @@ function apiErrorMessage(err) {
   if (err && err.code) {
     const key = 'error.' + err.code;
     const text = t(key);
-    if (text !== key) return text;
+    if (text !== key) {
+      if (err.code === 'probe_failed' && err.message) return text + ' ' + err.message;
+      return text;
+    }
   }
   if (err instanceof TypeError) return t('error.network');
   return (err && err.message) || t('error.generic');
@@ -141,6 +140,34 @@ function row(cells) {
   return tr;
 }
 
+function profileURL(profile) {
+  if (profile.base_url) return profile.base_url;
+  const port = profile.port ? `:${profile.port}` : '';
+  return `${profile.scheme}://${profile.host}${port}`;
+}
+
+function renderUpstreamWarning(data) {
+  const box = $('upstream-warning');
+  if (!box) return;
+  const profiles = data.profiles || [];
+  const effective = profiles.find((p) => p.id === data.effective);
+  if (!effective) {
+    $('upstream-warning-text').textContent = t('upstream.noneText');
+    box.hidden = false;
+    return;
+  }
+  if (effective.health !== 'unhealthy') {
+    box.hidden = true;
+    return;
+  }
+  $('upstream-warning-text').textContent = t('upstream.downText', {
+    profile: effective.label || effective.id,
+    url: profileURL(effective),
+    error: effective.last_error || t('health.unknown')
+  });
+  box.hidden = false;
+}
+
 function renderOverview(data) {
   overview = data;
   setText('relay-summary', `v${data.relay.version} · ${data.relay.listen} · pid ${data.relay.pid}`);
@@ -172,6 +199,8 @@ function renderOverview(data) {
   } else {
     lan.hidden = true;
   }
+
+  renderUpstreamWarning(data);
 
   const profileOptions = data.profiles.map((p) => p.id);
   fillSelect($('switch-profile'), profileOptions, data.effective);
@@ -221,6 +250,11 @@ function endpointForm(profile) {
   const title = document.createElement('strong');
   title.textContent = `${profile.id} — ${profile.label}`;
   form.appendChild(title);
+  const status = document.createElement('p');
+  status.className = 'muted endpoint-status';
+  const health = translatedValue('health', profile.health);
+  status.textContent = `${t('profiles.health')}: ${health}` + (profile.last_error ? ` · ${t('profiles.lastError')}: ${profile.last_error}` : '');
+  form.appendChild(status);
   const scheme = document.createElement('select');
   for (const value of ['http', 'https']) {
     const opt = document.createElement('option');
@@ -235,7 +269,25 @@ function endpointForm(profile) {
   port.name = 'port'; port.type = 'number'; port.min = '1'; port.max = '65535'; port.value = profile.port || '';
   const submit = document.createElement('button');
   submit.type = 'submit'; submit.textContent = t('endpoints.apply');
-  form.append(scheme, host, port, submit);
+  const use = document.createElement('button');
+  use.type = 'button';
+  const isActive = overview && overview.effective === profile.id;
+  use.textContent = isActive ? t('endpoints.active') : t('endpoints.use');
+  use.disabled = isActive;
+  use.addEventListener('click', async () => {
+    showError('');
+    use.disabled = true;
+    use.textContent = t('endpoints.switching');
+    try {
+      await api('/_shunt/api/switch', { method: 'POST', body: { profile: profile.id, probe: true } });
+      await loadOverview();
+    } catch (err) {
+      showError(apiErrorMessage(err));
+      use.disabled = false;
+      use.textContent = t('endpoints.use');
+    }
+  });
+  form.append(scheme, host, port, submit, use);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     showError('');
@@ -316,13 +368,16 @@ async function loadModels(refresh) {
   }
 }
 
+function setTab(name) {
+  document.querySelectorAll('.tab').forEach((tab) => tab.classList.toggle('active', tab.dataset.tab === name));
+  document.querySelectorAll('.panel').forEach((panel) => { panel.hidden = panel.id !== 'tab-' + name; });
+  if (name === 'clients') loadClients();
+}
+
 document.querySelectorAll('.tab').forEach((tab) => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t === tab));
-    document.querySelectorAll('.panel').forEach((p) => { p.hidden = p.id !== 'tab-' + tab.dataset.tab; });
-    if (tab.dataset.tab === 'clients') loadClients();
-  });
+  tab.addEventListener('click', () => setTab(tab.dataset.tab));
 });
+$('upstream-configure').addEventListener('click', () => setTab('endpoints'));
 
 $('refresh').addEventListener('click', () => { showError(''); loadOverview(); });
 $('switch-form').addEventListener('submit', async (event) => {
@@ -367,6 +422,7 @@ $('models-form').addEventListener('submit', (event) => {
 
 const clientState = {
   loaded: false,
+  relay: '',
   clients: [],
   models: { anthropic: [], openai: [] }
 };
@@ -529,6 +585,43 @@ async function writeClient(card, status, output) {
   status.textContent = (data.changed || []).length
     ? t('client.updated', { keys: data.changed.join(', ') })
     : t('client.noChange');
+}
+
+function clientRelayInfo() {
+  const box = document.createElement('div');
+  box.className = 'relay-info';
+  const line = document.createElement('p');
+  line.className = 'muted';
+  line.append(t('clients.relay') + ' ');
+  const code = document.createElement('code');
+  code.textContent = clientState.relay || '—';
+  line.appendChild(code);
+  const copy = button(t('client.copy'), 'button');
+  copy.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(clientState.relay);
+      copy.textContent = t('client.copied');
+      setTimeout(() => { copy.textContent = t('client.copy'); }, 1200);
+    } catch {
+      copy.textContent = t('client.copyFailed');
+    }
+  });
+  line.appendChild(copy);
+  const hint = document.createElement('p');
+  hint.className = 'muted';
+  hint.textContent = t('clients.relayHint');
+  box.append(line, hint);
+  return box;
+}
+
+function renderClients() {
+  const grid = $('client-cards');
+  if (!grid) return;
+  grid.textContent = '';
+  grid.appendChild(clientRelayInfo());
+  for (const client of clientState.clients) {
+    grid.appendChild(clientCard(client));
+  }
 }
 
 function clientCard(client) {
@@ -742,11 +835,8 @@ async function loadClients() {
   try {
     const data = await api('/_shunt/api/clients');
     clientState.clients = data.clients || [];
-    const grid = $('client-cards');
-    grid.textContent = '';
-    for (const client of clientState.clients) {
-      grid.appendChild(clientCard(client));
-    }
+    clientState.relay = data.relay || '';
+    renderClients();
     clientState.loaded = true;
   } catch (err) {
     showError(apiErrorMessage(err));

@@ -119,6 +119,12 @@ button:hover { border-color: var(--accent); }
 button.danger { border-color: var(--danger); color: var(--danger); }
 
 .endpoint-form { border-top: 1px solid var(--border); padding-top: 0.75rem; }
+.endpoint-status { flex-basis: 100%; margin: 0; overflow-wrap: anywhere; }
+#upstream-warning button { margin-left: 0.5rem; }
+
+.relay-info { border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem 1rem; background: var(--bg); }
+.relay-info code { overflow-wrap: anywhere; }
+.relay-info button { margin-left: 0.5rem; }
 
 .client-grid { display: grid; gap: 1rem; }
 .client-card { border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem; background: var(--bg); }

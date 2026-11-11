@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -77,6 +78,9 @@ func TestGUIStaticAssetsAndSecurityHeaders(t *testing.T) {
 	if !bytes.Contains(body, []byte(`id="language"`)) || !bytes.Contains(body, []byte(`data-i18n="refresh"`)) {
 		t.Fatal("ui page does not expose the language selector and translated labels")
 	}
+	if !bytes.Contains(body, []byte(`id="upstream-warning"`)) || !bytes.Contains(body, []byte(`id="upstream-configure"`)) {
+		t.Fatal("ui page does not expose the upstream warning and configure action")
+	}
 	if !bytes.Contains(body, []byte(`data-tab="clients"`)) || !bytes.Contains(body, []byte(`id="client-cards"`)) {
 		t.Fatal("ui page does not expose the client configuration tab")
 	}
@@ -143,6 +147,42 @@ func TestGUIStaticAssetsAndSecurityHeaders(t *testing.T) {
 	if !bytes.Contains(i18nBody, []byte("Vue d’ensemble")) || !bytes.Contains(i18nBody, []byte("Overview")) {
 		t.Fatalf("i18n module is missing French or English translations: %s", i18nBody)
 	}
+
+	enStart := bytes.Index(i18nBody, []byte("  en: {"))
+	frStart := bytes.Index(i18nBody, []byte("  fr: {"))
+	frEnd := bytes.LastIndex(i18nBody, []byte("};"))
+	if enStart < 0 || frStart < 0 || frEnd < 0 || frStart <= enStart || frEnd <= frStart {
+		t.Fatal("i18n module does not contain the expected language blocks")
+	}
+	enKeys := i18nKeys(string(i18nBody[enStart:frStart]))
+	frKeys := i18nKeys(string(i18nBody[frStart:frEnd]))
+	if len(enKeys) == 0 || len(frKeys) == 0 {
+		t.Fatalf("i18n key extraction failed: en=%d fr=%d", len(enKeys), len(frKeys))
+	}
+	for key := range enKeys {
+		if !frKeys[key] {
+			t.Errorf("missing French translation for %q", key)
+		}
+	}
+	for key := range frKeys {
+		if !enKeys[key] {
+			t.Errorf("missing English translation for %q", key)
+		}
+	}
+	staticKeys := regexp.MustCompile(`data-i18n(?:-[a-z-]+)?="([^"]+)"`).FindAllSubmatch(body, -1)
+	for _, match := range staticKeys {
+		if !enKeys[string(match[1])] {
+			t.Errorf("index.html references unknown i18n key %q", match[1])
+		}
+	}
+}
+
+func i18nKeys(block string) map[string]bool {
+	keys := map[string]bool{}
+	for _, match := range regexp.MustCompile(`(?m)^\s+'([^']+)':`).FindAllStringSubmatch(block, -1) {
+		keys[match[1]] = true
+	}
+	return keys
 }
 
 func TestGUIOverviewPayload(t *testing.T) {
