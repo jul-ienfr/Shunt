@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="shunt-ui-token" content="__SHUNT_UI_TOKEN__">
+<title>Shunt</title>
+<link rel="icon" href="/_shunt/ui/favicon.svg" type="image/svg+xml">
+<script src="/_shunt/ui/theme.js"></script>
+<link rel="stylesheet" href="/_shunt/ui/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div>
+    <h1>Shunt</h1>
+    <p id="relay-summary" class="muted" data-i18n="app.loading">loading…</p>
+  </div>
+  <div class="actions">
+    <button id="language" class="lang-toggle" type="button" aria-label="Language: English. Click to switch to French.">EN</button>
+    <button id="theme" class="theme-toggle" type="button" aria-label="Color theme: auto">Auto</button>
+    <button id="refresh" type="button" data-i18n="refresh">Refresh</button>
+  </div>
+</header>
+
+<main>
+  <div id="lan-warning" class="warning" hidden>
+    <strong data-i18n="lan.enabled">LAN mode is enabled.</strong>
+    <span id="lan-warning-text"></span>
+  </div>
+  <div id="error" class="error" role="alert" hidden></div>
+
+  <nav class="tabs" aria-label="Sections" data-i18n-aria-label="tabs.aria">
+    <button class="tab active" data-tab="overview" type="button" data-i18n="tab.overview">Overview</button>
+    <button class="tab" data-tab="endpoints" type="button" data-i18n="tab.endpoints">Endpoints</button>
+    <button class="tab" data-tab="models" type="button" data-i18n="tab.models">Models</button>
+    <button class="tab" data-tab="clients" type="button" data-i18n="tab.clients">Clients</button>
+  </nav>
+
+  <section id="tab-overview" class="panel">
+    <h2 data-i18n="status.title">Status</h2>
+    <dl id="status-grid" class="grid"></dl>
+
+    <h2 data-i18n="switch.title">Switch upstream</h2>
+    <form id="switch-form" class="inline-form">
+      <label><span data-i18n="profile">Profile</span>
+        <select id="switch-profile"></select>
+      </label>
+      <label class="check"><input id="switch-probe" type="checkbox" checked> <span data-i18n="probe">Probe first</span></label>
+      <button type="submit" data-i18n="switch">Switch</button>
+    </form>
+
+    <h2 data-i18n="mode.title">Mode</h2>
+    <form id="mode-form" class="inline-form">
+      <label><span data-i18n="mode">Mode</span>
+        <select id="mode-select">
+          <option value="manual" data-i18n="mode.manual">manual</option>
+          <option value="auto" data-i18n="mode.auto">auto</option>
+        </select>
+      </label>
+      <label><span data-i18n="preferred">Preferred</span>
+        <select id="mode-preferred"></select>
+      </label>
+      <button type="submit" data-i18n="mode.apply">Apply mode</button>
+    </form>
+
+    <h2 data-i18n="profiles.title">Profiles</h2>
+    <table>
+      <thead><tr><th data-i18n="profiles.id">ID</th><th data-i18n="profiles.label">Label</th><th data-i18n="profiles.endpoint">Endpoint</th><th data-i18n="profiles.health">Health</th><th data-i18n="profiles.latency">Latency</th><th data-i18n="profiles.lastError">Last error</th></tr></thead>
+      <tbody id="profiles-body"></tbody>
+    </table>
+  </section>
+
+  <section id="tab-endpoints" class="panel" hidden>
+    <h2 data-i18n="entry.title">Entry listener</h2>
+    <p class="muted" data-i18n="entry.note">Changing the entry address requires updating the base URL of every configured client. Upstream switches do not move the entry.</p>
+    <form id="entry-form" class="inline-form">
+      <label><span data-i18n="entry.ip">IP</span> <input id="entry-ip" name="ip" required autocomplete="off"></label>
+      <label><span data-i18n="entry.port">Port</span> <input id="entry-port" name="port" type="number" min="1024" max="65535" required></label>
+      <button type="submit" data-i18n="entry.change">Change entry</button>
+    </form>
+    <div id="entry-notice" class="notice" hidden></div>
+
+    <h2 data-i18n="endpoints.title">Profile endpoints</h2>
+    <div id="endpoint-forms"></div>
+  </section>
+
+  <section id="tab-models" class="panel" hidden>
+    <h2 data-i18n="models.title">Model catalog</h2>
+    <form id="models-form" class="inline-form">
+      <label><span data-i18n="models.dialect">Dialect</span>
+        <select id="models-dialect">
+          <option value="anthropic">anthropic</option>
+          <option value="openai">openai</option>
+        </select>
+      </label>
+      <label class="check"><input id="models-refresh" type="checkbox"> <span data-i18n="models.refresh">Refresh</span></label>
+      <button type="submit" data-i18n="models.load">Load models</button>
+    </form>
+    <p id="models-summary" class="muted"></p>
+    <table>
+      <thead><tr><th data-i18n="models.model">Model</th><th data-i18n="models.free">Free</th><th data-i18n="models.context">Context</th><th data-i18n="models.maxOut">Max out</th><th data-i18n="models.caps">Caps</th></tr></thead>
+      <tbody id="models-body"></tbody>
+    </table>
+  </section>
+
+  <section id="tab-clients" class="panel" hidden>
+    <h2 data-i18n="clients.title">Client configuration</h2>
+    <p class="muted" data-i18n="clients.note">Generate non-secret configuration for Claude Code, Codex, and DeepSeek Harness. The base URL points at this relay and never changes when you switch upstreams. Load models first to choose a free model. Timestamped backups can be restored from the same card.</p>
+    <div id="client-cards" class="client-grid"></div>
+  </section>
+</main>
+
+<div id="lan-modal" class="modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="lan-title">
+    <h2 id="lan-title" data-i18n="lan.title">Confirm LAN exposure</h2>
+    <p data-i18n="lan.p1">The listener will be reachable from other hosts on this network. LAN hosts can open this GUI, obtain its token, change configuration, and send requests through the relay, consuming the upstream's quota.</p>
+    <p data-i18n="lan.p2">The entry listener is plain HTTP. Use it only on a trusted network. Windows Firewall may still block inbound traffic; Shunt does not change firewall rules.</p>
+    <div class="actions">
+      <button id="lan-cancel" type="button" data-i18n="lan.cancel">Cancel</button>
+      <button id="lan-confirm" class="danger" type="button" data-i18n="lan.confirm">I understand, bind</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/_shunt/ui/app.js"></script>
+</body>
+</html>

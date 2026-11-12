@@ -1,0 +1,17 @@
+schema = 1
+default_profile = "local"
+
+[switch]
+on_profile = "remote"
+off_profile = "local"
+
+[auto]
+preferred = "local"
+
+[profiles.local]
+label = "Local proxy"
+base_url = "http://127.0.0.1:4000"
+
+[profiles.remote]
+label = "Tailnet MSI"
+base_url = "https://msi.tailc56568.ts.net"
