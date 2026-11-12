@@ -38,6 +38,7 @@ type listenerView struct {
 	Profile   string `json:"profile"`
 	Effective string `json:"effective"`
 	Pinned    bool   `json:"pinned"`
+	Explicit  bool   `json:"explicit"`
 }
 
 type relayView struct {
@@ -146,6 +147,7 @@ func (h *Handler) overview() overviewDoc {
 			Profile:   listener.Profile,
 			Effective: listener.Effective,
 			Pinned:    listener.Pinned,
+			Explicit:  cfg.ExplicitListeners(),
 		})
 	}
 	if doc.Listeners == nil {
@@ -207,6 +209,103 @@ func (h *Handler) handleProfileEndpoint(w http.ResponseWriter, r *http.Request, 
 		},
 		"applied": true,
 		"notice":  "New requests use the new endpoint; in-flight requests finish on the previous one.",
+	})
+}
+
+func (h *Handler) handleProfileAdd(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ID     string `json:"id"`
+		Label  string `json:"label"`
+		Scheme string `json:"scheme"`
+		Host   string `json:"host"`
+		Port   int    `json:"port"`
+	}
+	if !h.decode(w, r, &req) {
+		return
+	}
+	origin, err := h.server.AddProfile(req.ID, req.Label, req.Scheme, req.Host, req.Port)
+	if err != nil {
+		h.writeApplyError(w, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{
+		"schema":   1,
+		"profile":  req.ID,
+		"base_url": origin,
+		"applied":  true,
+	})
+}
+
+func (h *Handler) handleProfileRemove(w http.ResponseWriter, r *http.Request, id string) {
+	var req struct{}
+	if !h.decode(w, r, &req) {
+		return
+	}
+	if err := h.server.RemoveProfile(id); err != nil {
+		h.writeApplyError(w, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{"schema": 1, "profile": id, "removed": true})
+}
+
+func (h *Handler) handleListenerAdd(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name       string `json:"name"`
+		IP         string `json:"ip"`
+		Port       int    `json:"port"`
+		Profile    string `json:"profile"`
+		ConfirmLAN bool   `json:"confirm_lan"`
+	}
+	if !h.decode(w, r, &req) {
+		return
+	}
+	addr, err := h.server.AddListener(req.Name, req.IP, req.Port, req.Profile, req.ConfirmLAN)
+	if err != nil {
+		h.writeApplyError(w, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{
+		"schema":   1,
+		"name":     req.Name,
+		"listen":   addr,
+		"url":      "http://" + addr + "/",
+		"applied":  true,
+		"explicit": true,
+	})
+}
+
+func (h *Handler) handleListenerRemove(w http.ResponseWriter, r *http.Request, name string) {
+	var req struct{}
+	if !h.decode(w, r, &req) {
+		return
+	}
+	if err := h.server.RemoveListener(name); err != nil {
+		h.writeApplyError(w, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{"schema": 1, "name": name, "removed": true})
+}
+
+func (h *Handler) handleListenerListen(w http.ResponseWriter, r *http.Request, name string) {
+	var req struct {
+		IP         string `json:"ip"`
+		Port       int    `json:"port"`
+		ConfirmLAN bool   `json:"confirm_lan"`
+	}
+	if !h.decode(w, r, &req) {
+		return
+	}
+	addr, err := h.server.SetListenerAddr(name, req.IP, req.Port, req.ConfirmLAN)
+	if err != nil {
+		h.writeApplyError(w, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{
+		"schema":  1,
+		"name":    name,
+		"listen":  addr,
+		"url":     "http://" + addr + "/",
+		"applied": true,
 	})
 }
 
@@ -364,9 +463,11 @@ func (h *Handler) writeApplyError(w http.ResponseWriter, err error) {
 			status = http.StatusForbidden
 		case relay.CodeBindFailed:
 			status = http.StatusConflict
+		case relay.CodeProfileInUse:
+			status = http.StatusConflict
 		case relay.CodeConfigWriteFailed:
 			status = http.StatusInternalServerError
-		case relay.CodeProfileNotFound:
+		case relay.CodeProfileNotFound, relay.CodeListenerNotFound:
 			status = http.StatusNotFound
 		case relay.CodeProfileDisabled, relay.CodeInvalidMode, relay.CodeInvalidEntry, relay.CodeInvalidEndpoint, relay.CodeProbeFailed:
 			status = http.StatusUnprocessableEntity

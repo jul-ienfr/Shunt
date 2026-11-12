@@ -187,6 +187,34 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		id := strings.TrimSuffix(strings.TrimPrefix(path, "profiles/"), "/endpoint")
 		h.handleProfileEndpoint(w, r, id)
+	case path == "profiles" && r.Method == http.MethodPost:
+		if !h.authorize(w, r) {
+			return
+		}
+		h.handleProfileAdd(w, r)
+	case strings.HasPrefix(path, "profiles/") && strings.HasSuffix(path, "/remove") && r.Method == http.MethodPost:
+		if !h.authorize(w, r) {
+			return
+		}
+		id := strings.TrimSuffix(strings.TrimPrefix(path, "profiles/"), "/remove")
+		h.handleProfileRemove(w, r, id)
+	case path == "listeners" && r.Method == http.MethodPost:
+		if !h.authorize(w, r) {
+			return
+		}
+		h.handleListenerAdd(w, r)
+	case strings.HasPrefix(path, "listeners/") && strings.HasSuffix(path, "/remove") && r.Method == http.MethodPost:
+		if !h.authorize(w, r) {
+			return
+		}
+		name := strings.TrimSuffix(strings.TrimPrefix(path, "listeners/"), "/remove")
+		h.handleListenerRemove(w, r, name)
+	case strings.HasPrefix(path, "listeners/") && strings.HasSuffix(path, "/listen") && r.Method == http.MethodPost:
+		if !h.authorize(w, r) {
+			return
+		}
+		name := strings.TrimSuffix(strings.TrimPrefix(path, "listeners/"), "/listen")
+		h.handleListenerListen(w, r, name)
 	case path == "overview" || path == "models" || path == "clients" || path == "clients/backups":
 		methodNotAllowed(w, "GET, HEAD")
 	default:

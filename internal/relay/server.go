@@ -57,6 +57,8 @@ const (
 	CodeProbeFailed       = "probe_failed"
 	CodeProfileNotFound   = "profile_not_found"
 	CodeProfileDisabled   = "profile_disabled"
+	CodeProfileInUse      = "profile_in_use"
+	CodeListenerNotFound  = "listener_not_found"
 	CodeInvalidMode       = "invalid_mode"
 )
 
@@ -675,6 +677,7 @@ func (s *Server) applyConfig(cfg config.Config) error {
 	for id, p := range cfg.Profiles {
 		s.tracker.UpdateProfile(id, p.BaseURL, p.IsEnabled())
 	}
+	s.tracker.Retain(cfg.Profiles)
 	s.runtime.Update(func(snap *runtime.Snapshot) {
 		snap.Profiles = s.tracker.Snapshot()
 		snap.Listen = s.primaryAddr()

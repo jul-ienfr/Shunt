@@ -250,3 +250,15 @@ func (t *Tracker) UpdateProfile(id, baseURL string, enabled bool) {
 	state.record.BaseURL = baseURL
 	state.record.Enabled = enabled
 }
+
+// Retain drops health records for profiles that no longer exist, so a removed
+// profile cannot linger in status output.
+func (t *Tracker) Retain(profiles map[string]config.Profile) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for id := range t.health {
+		if _, ok := profiles[id]; !ok {
+			delete(t.health, id)
+		}
+	}
+}

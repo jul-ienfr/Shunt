@@ -4,6 +4,8 @@ package desktop
 
 import (
 	"context"
+	_ "embed"
+	"encoding/binary"
 	"fmt"
 	"log/slog"
 	"runtime"
@@ -12,6 +14,12 @@ import (
 	"time"
 	"unsafe"
 )
+
+// trayIconICO is the Shunt mark (blue rounded tile with a white waveform),
+// generated from internal/ui/assets/favicon.svg at 16-64 pixels.
+//
+//go:embed assets/shunt.ico
+var trayIconICO []byte
 
 const (
 	wmDestroy       = 0x0002
@@ -74,6 +82,8 @@ var (
 	procPostQuitMessage     = user32.NewProc("PostQuitMessage")
 	procPostMessageW        = user32.NewProc("PostMessageW")
 	procLoadIconW           = user32.NewProc("LoadIconW")
+	procCreateIconFromResEx = user32.NewProc("CreateIconFromResourceEx")
+	procDestroyIcon         = user32.NewProc("DestroyIcon")
 	procLoadCursorW         = user32.NewProc("LoadCursorW")
 	procCreatePopupMenu     = user32.NewProc("CreatePopupMenu")
 	procAppendMenuW         = user32.NewProc("AppendMenuW")
@@ -148,6 +158,7 @@ type trayInstance struct {
 	opts   TrayOptions
 	hwnd   syscall.Handle
 	icon   syscall.Handle
+	owned  bool // icon was created here and must be destroyed
 	logger *slog.Logger
 }
 
@@ -219,9 +230,9 @@ func RunTray(ctx context.Context, opts TrayOptions) error {
 	if err != nil {
 		return err
 	}
-	icon, _, iconErr := procLoadIconW.Call(0, idiApplication)
+	icon, owned, iconErr := loadTrayIcon()
 	if icon == 0 {
-		return fmt.Errorf("desktop: LoadIconW failed: %v", iconErr)
+		return fmt.Errorf("desktop: no tray icon available: %v", iconErr)
 	}
 	cursor, _, _ := procLoadCursorW.Call(0, idcArrow)
 
@@ -264,11 +275,15 @@ func RunTray(ctx context.Context, opts TrayOptions) error {
 		opts:   opts,
 		hwnd:   syscall.Handle(hwnd),
 		icon:   syscall.Handle(icon),
+		owned:  owned,
 		logger: opts.Logger,
 	}
 	setActive(t)
 	defer setActive(nil)
 
+	if t.owned {
+		defer procDestroyIcon.Call(uintptr(t.icon))
+	}
 	if err := addIcon(t); err != nil {
 		procDestroyWindow.Call(uintptr(t.hwnd))
 		return err
@@ -306,6 +321,66 @@ func RunTray(ctx context.Context, opts TrayOptions) error {
 		procDispatchMessageW.Call(uintptr(unsafe.Pointer(&m)))
 	}
 	return nil
+}
+
+// loadTrayIcon prefers the embedded Shunt icon and falls back to the generic
+// application icon only if the embedded image cannot be decoded.
+func loadTrayIcon() (syscall.Handle, bool, error) {
+	if h, err := iconFromICO(trayIconICO, 32); err == nil {
+		return h, true, nil
+	}
+	h, _, err := procLoadIconW.Call(0, idiApplication)
+	if h == 0 {
+		return 0, false, err
+	}
+	return syscall.Handle(h), false, nil
+}
+
+// iconFromICO selects the directory entry closest to want pixels and turns its
+// DIB into an HICON. The icon is owned by the caller, who must call DestroyIcon.
+func iconFromICO(data []byte, want int) (syscall.Handle, error) {
+	if len(data) < 6 {
+		return 0, fmt.Errorf("icon data is truncated")
+	}
+	count := int(binary.LittleEndian.Uint16(data[4:6]))
+	bestDiff, bestWidth, bestSize, bestOffset := 0, 0, 0, 0
+	for i := 0; i < count; i++ {
+		entry := 6 + i*16
+		if entry+16 > len(data) {
+			break
+		}
+		width := int(data[entry])
+		if width == 0 {
+			width = 256
+		}
+		size := int(binary.LittleEndian.Uint32(data[entry+8:]))
+		offset := int(binary.LittleEndian.Uint32(data[entry+12:]))
+		if size <= 0 || offset < 0 || offset+size > len(data) {
+			continue
+		}
+		diff := width - want
+		if diff < 0 {
+			diff = -diff
+		}
+		if bestSize == 0 || diff < bestDiff || (diff == bestDiff && width > bestWidth) {
+			bestDiff, bestWidth, bestSize, bestOffset = diff, width, size, offset
+		}
+	}
+	if bestSize == 0 {
+		return 0, fmt.Errorf("icon has no usable bitmaps")
+	}
+	h, _, err := procCreateIconFromResEx.Call(
+		uintptr(unsafe.Pointer(&data[bestOffset])),
+		uintptr(bestSize),
+		1,          // fIcon
+		0x00030000, // 32-bit icon with alpha
+		0, 0,       // system default size
+		0,
+	)
+	if h == 0 {
+		return 0, fmt.Errorf("CreateIconFromResourceEx failed: %v", err)
+	}
+	return syscall.Handle(h), nil
 }
 
 func addIcon(t *trayInstance) error {

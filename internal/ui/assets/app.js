@@ -193,9 +193,111 @@ function renderOverview(data) {
     forms.appendChild(endpointForm(p));
   }
 
+  const listenersBody = $('listeners-body');
+  listenersBody.textContent = '';
+  for (const listener of data.listeners || []) {
+    listenersBody.appendChild(listenerRow(listener));
+  }
+
+  const listenerProfile = $('listener-profile');
+  listenerProfile.textContent = '';
+  const globalOption = document.createElement('option');
+  globalOption.value = '';
+  globalOption.textContent = t('listeners.global');
+  listenerProfile.appendChild(globalOption);
+  for (const p of data.profiles) {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.id;
+    listenerProfile.appendChild(opt);
+  }
+
   const entryHost = (data.relay.listen || '').startsWith('[') ? data.relay.listen.slice(1, data.relay.listen.indexOf(']')) : (data.relay.listen.split(':')[0] || '');
   $('entry-ip').value = entryHost;
   $('entry-port').value = p_port(data.relay.listen);
+}
+
+function showNotice(id, text) {
+  const box = $(id);
+  if (!box) return;
+  box.hidden = false;
+  box.textContent = text;
+}
+
+function splitListen(listen) {
+  const value = listen || '';
+  if (value.startsWith('[')) {
+    const end = value.indexOf(']');
+    return { ip: value.slice(1, end), port: p_port(value) };
+  }
+  const colon = value.lastIndexOf(':');
+  return { ip: colon >= 0 ? value.slice(0, colon) : value, port: p_port(value) };
+}
+
+function listenerRow(listener) {
+  const form = document.createElement('form');
+  form.className = 'inline-form listener-row';
+  const name = document.createElement('strong');
+  name.textContent = listener.name;
+  const parts = splitListen(listener.listen);
+  const ip = document.createElement('input');
+  ip.value = parts.ip || '';
+  ip.required = true;
+  ip.autocomplete = 'off';
+  ip.setAttribute('aria-label', t('entry.ip'));
+  const port = document.createElement('input');
+  port.type = 'number';
+  port.min = '1024';
+  port.max = '65535';
+  port.required = true;
+  port.value = parts.port || '';
+  port.setAttribute('aria-label', t('entry.port'));
+  const pin = document.createElement('span');
+  pin.className = 'muted';
+  pin.textContent = listener.profile || t('listeners.global');
+  const apply = button(t('listeners.apply'), 'submit');
+  const remove = button(t('listeners.remove'), 'button');
+  remove.className = 'danger';
+  form.append(name, ip, port, pin, apply, remove);
+
+  if (!listener.explicit) {
+    // The legacy [relay] listen entry is edited from the entry form above.
+    ip.disabled = true;
+    port.disabled = true;
+    apply.disabled = true;
+    remove.disabled = true;
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    showError('');
+    const move = (confirmLan) => api(`/_shunt/api/listeners/${encodeURIComponent(listener.name)}/listen`, {
+      method: 'POST',
+      body: { ip: ip.value.trim(), port: Number(port.value), confirm_lan: confirmLan }
+    });
+    try {
+      await move(false);
+      await loadOverview();
+    } catch (err) {
+      if (err.code === 'lan_not_confirmed') {
+        if (window.confirm(t('lan.listenerConfirm', { listen: `${ip.value}:${port.value}` }))) {
+          try { await move(true); await loadOverview(); } catch (e) { showError(apiErrorMessage(e)); }
+        }
+        return;
+      }
+      showError(apiErrorMessage(err));
+    }
+  });
+
+  remove.addEventListener('click', async () => {
+    if (!window.confirm(t('listeners.confirmRemove', { name: listener.name }))) return;
+    showError('');
+    try {
+      await api(`/_shunt/api/listeners/${encodeURIComponent(listener.name)}/remove`, { method: 'POST', body: {} });
+      await loadOverview();
+    } catch (err) { showError(apiErrorMessage(err)); }
+  });
+  return form;
 }
 
 function p_port(listen) {
@@ -235,7 +337,17 @@ function endpointForm(profile) {
   port.name = 'port'; port.type = 'number'; port.min = '1'; port.max = '65535'; port.value = profile.port || '';
   const submit = document.createElement('button');
   submit.type = 'submit'; submit.textContent = t('endpoints.apply');
-  form.append(scheme, host, port, submit);
+  const remove = button(t('profiles.remove'), 'button');
+  remove.className = 'danger';
+  form.append(scheme, host, port, submit, remove);
+  remove.addEventListener('click', async () => {
+    if (!window.confirm(t('profiles.confirmRemove', { id: profile.id }))) return;
+    showError('');
+    try {
+      await api(`/_shunt/api/profiles/${encodeURIComponent(profile.id)}/remove`, { method: 'POST', body: {} });
+      await loadOverview();
+    } catch (err) { showError(apiErrorMessage(err)); }
+  });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     showError('');
@@ -363,6 +475,64 @@ $('models-form').addEventListener('submit', (event) => {
   event.preventDefault();
   showError('');
   loadModels($('models-refresh').checked);
+});
+
+$('listener-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  showError('');
+  const payload = {
+    name: $('listener-name').value.trim(),
+    ip: $('listener-ip').value.trim(),
+    port: Number($('listener-port').value),
+    profile: $('listener-profile').value,
+    confirm_lan: false
+  };
+  const add = (confirmLan) => api('/_shunt/api/listeners', {
+    method: 'POST',
+    body: Object.assign({}, payload, { confirm_lan: confirmLan })
+  });
+  try {
+    const res = await add(false);
+    showNotice('listener-notice', t('listeners.added', { url: res.url }));
+    $('listener-name').value = '';
+    $('listener-port').value = '';
+    await loadOverview();
+  } catch (err) {
+    if (err.code === 'lan_not_confirmed') {
+      if (window.confirm(t('lan.listenerConfirm', { listen: `${payload.ip}:${payload.port}` }))) {
+        try {
+          const res = await add(true);
+          showNotice('listener-notice', t('listeners.added', { url: res.url }));
+          $('listener-name').value = '';
+          $('listener-port').value = '';
+          await loadOverview();
+        } catch (e) { showError(apiErrorMessage(e)); }
+      }
+      return;
+    }
+    showError(apiErrorMessage(err));
+  }
+});
+
+$('profile-add-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  showError('');
+  try {
+    await api('/_shunt/api/profiles', {
+      method: 'POST',
+      body: {
+        id: $('profile-id').value.trim(),
+        label: $('profile-label').value.trim(),
+        scheme: $('profile-scheme').value,
+        host: $('profile-host').value.trim(),
+        port: Number($('profile-port').value)
+      }
+    });
+    $('profile-id').value = '';
+    $('profile-label').value = '';
+    $('profile-host').value = '';
+    await loadOverview();
+  } catch (err) { showError(apiErrorMessage(err)); }
 });
 
 const clientState = {

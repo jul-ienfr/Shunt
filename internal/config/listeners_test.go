@@ -3,6 +3,8 @@ package config
 import (
 	"strings"
 	"testing"
+
+	"github.com/pelletier/go-toml/v2"
 )
 
 func TestEffectiveListenersLegacyFallback(t *testing.T) {
@@ -150,6 +152,30 @@ func TestListenerEditsPreserveCommentsAndRoundTrip(t *testing.T) {
 	}
 	if _, err := SetListenerListen(text, "edge", "127.0.0.1:9203"); err == nil {
 		t.Fatal("editing an unknown listener succeeded")
+	}
+}
+
+func TestAddListenerDropsEncoderEmptyArray(t *testing.T) {
+	data, err := toml.Marshal(Defaults())
+	if err != nil {
+		t.Fatalf("marshal defaults: %v", err)
+	}
+	if !strings.Contains(string(data), "listeners = []") {
+		t.Skipf("encoder no longer writes an empty listeners array")
+	}
+	text, err := AddListener(string(data), "edge", "127.0.0.1:9201", "remote")
+	if err != nil {
+		t.Fatalf("add listener: %v", err)
+	}
+	if strings.Contains(text, "listeners = []") {
+		t.Fatal("empty listeners array was not removed")
+	}
+	cfg, err := Parse([]byte(text))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(cfg.Listeners) != 1 || cfg.Listeners[0].Name != "edge" {
+		t.Fatalf("listeners = %+v", cfg.Listeners)
 	}
 }
 

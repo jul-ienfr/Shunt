@@ -175,8 +175,11 @@ Manage the topology without hand-editing TOML:
 ```
 
 Every edit is parsed and validated as a whole before it is written atomically, so a
-mistyped address or a profile still referenced by a listener is rejected without
-touching the running file. A running relay applies the change within
+mistyped address or a profile still pinned by a listener is rejected without touching
+the running file. The dashboard additionally retargets `default_profile`,
+`switch.on_profile`, `switch.off_profile`, `auto.preferred`, and the durable selection
+to another enabled profile when you delete one, so an existing profile can be replaced
+without hand-editing TOML. A running relay applies the change within
 `relay.config_poll_ms`. `listener add` materializes the existing legacy entry as
 `default` first, so adding a port never silently removes the current one.
 
@@ -247,13 +250,18 @@ copies its URL, switches profiles in one click, and quits the relay. `shunt ui -
 opens a chromeless Edge/Chrome window when available and falls back to the default
 browser.
 
-The entry IP/port and each profile's scheme/host/port can be edited live. An entry change
-binds the new listener first, then retires the old generation; the page navigates to the
-new origin. A profile endpoint change probes the candidate before publishing an immutable
-profile table, so in-flight requests finish on the previous endpoint. Wildcard and public
-binds return `invalid_entry`, an unconfirmed LAN bind returns `lan_not_confirmed`, a busy
-port returns `bind_failed`, and a failed configuration write returns
-`config_write_failed`; in every failure the old listener keeps serving.
+The entry IP/port and each profile's scheme/host/port can be edited live. The
+**Endpoints** tab also adds and removes profiles and additional entry ports, including
+moving an existing port to another address. Deleting a profile that is still pinned by a
+port returns `profile_in_use`; deleting one used as the default, a switch alias, or the
+auto preference retargets those references to another enabled profile. The last enabled
+profile and the last enabled port cannot be removed. An entry change binds the new
+listener first, then retires the old generation; the page navigates to the new origin. A
+profile endpoint change probes the candidate before publishing an immutable profile
+table, so in-flight requests finish on the previous endpoint. Wildcard and public binds
+return `invalid_entry`, an unconfirmed LAN bind returns `lan_not_confirmed`, a busy port
+returns `bind_failed`, and a failed configuration write returns `config_write_failed`; in
+every failure the old listener keeps serving.
 
 The GUI token is generated per process, injected only into the served page, and required
 on every mutation as `X-Shunt-UI-Token`. It is never written to configuration, state,
@@ -366,7 +374,7 @@ go test ./test/integration -count=1
 go test ./test/integration -run 'HotSwitch|MultiListener|ListenerSet' -count=1
 go test ./test/integration -run Auto -count=1
 go test ./test/integration -run 'Model|ClientConfig' -count=1
-go test ./test/integration -run 'GUIRebind|GUIProfile|GUIEntry' -count=1
+go test ./test/integration -run 'GUIRebind|GUIProfile|GUIEntry|GUITopology|GUIRemovesReferencedProfile' -count=1
 go test ./test/integration -run 'Doctor|Security' -count=1
 ```
 

@@ -155,6 +155,7 @@ func SetListenerListen(text, name, listen string) (string, error) {
 // callers validate the resulting document with Parse.
 func AddListener(text, name, listen, profile string) (string, error) {
 	return documentEdit(text, func(lines []string) ([]string, error) {
+		lines = dropEmptyListenersArray(lines)
 		for _, bounds := range sectionBlocks(lines, "[[listeners]]") {
 			if value, ok := blockValue(lines, bounds[0], bounds[1], "name"); ok && value == name {
 				return nil, fmt.Errorf("listener %q already exists", name)
@@ -171,6 +172,28 @@ func AddListener(text, name, listen, profile string) (string, error) {
 		block = append(block, "enabled = true")
 		return appendBlock(lines, block), nil
 	})
+}
+
+// dropEmptyListenersArray removes a root-level `listeners = []` written by a
+// TOML encoder. TOML cannot mix that array value with [[listeners]] tables.
+func dropEmptyListenersArray(lines []string) []string {
+	for i := 0; i < len(lines); i++ {
+		trimmed := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(trimmed, "[") {
+			return lines
+		}
+		if !strings.HasPrefix(trimmed, "listeners") {
+			continue
+		}
+		rest := strings.TrimSpace(strings.TrimPrefix(trimmed, "listeners"))
+		if !strings.HasPrefix(rest, "=") {
+			continue
+		}
+		if strings.TrimSpace(strings.TrimPrefix(rest, "=")) == "[]" {
+			return removeLines(lines, i, i+1)
+		}
+	}
+	return lines
 }
 
 // RemoveListener deletes one named listener block.

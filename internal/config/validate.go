@@ -10,6 +10,10 @@ import (
 
 var profileIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
 
+// ValidProfileID reports whether an id matches the profile ID grammar. Listener
+// names use the same grammar.
+func ValidProfileID(id string) bool { return profileIDPattern.MatchString(id) }
+
 // Validate checks the entire configuration and returns every problem it finds.
 func Validate(cfg *Config) error {
 	var problems []string

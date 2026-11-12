@@ -80,8 +80,35 @@
     </form>
     <div id="entry-notice" class="notice" hidden></div>
 
+    <h2 data-i18n="listeners.title">Entry ports</h2>
+    <p class="muted" data-i18n="listeners.note">Each port follows the global switch unless it is pinned to one profile. Adding a port keeps the existing ones.</p>
+    <table>
+      <thead><tr><th data-i18n="listeners.name">Name</th><th data-i18n="listeners.listen">Listen</th><th data-i18n="listeners.profile">Profile</th><th></th></tr></thead>
+      <tbody id="listeners-body"></tbody>
+    </table>
+    <form id="listener-form" class="inline-form">
+      <label><span data-i18n="listeners.name">Name</span> <input id="listener-name" required pattern="[a-z][a-z0-9-]*" autocomplete="off" placeholder="edge"></label>
+      <label><span data-i18n="entry.ip">IP</span> <input id="listener-ip" required autocomplete="off" value="127.0.0.1"></label>
+      <label><span data-i18n="entry.port">Port</span> <input id="listener-port" type="number" min="1024" max="65535" required></label>
+      <label><span data-i18n="listeners.profile">Profile</span> <select id="listener-profile"></select></label>
+      <button type="submit" data-i18n="listeners.add">Add port</button>
+    </form>
+    <div id="listener-notice" class="notice" hidden></div>
+
     <h2 data-i18n="endpoints.title">Profile endpoints</h2>
     <div id="endpoint-forms"></div>
+
+    <h3 data-i18n="profiles.addTitle">Add a profile</h3>
+    <form id="profile-add-form" class="inline-form">
+      <label><span data-i18n="profiles.id">ID</span> <input id="profile-id" required pattern="[a-z][a-z0-9-]*" autocomplete="off" placeholder="third"></label>
+      <label><span data-i18n="profiles.label">Label</span> <input id="profile-label" autocomplete="off"></label>
+      <label><span data-i18n="profiles.scheme">Scheme</span>
+        <select id="profile-scheme"><option value="https">https</option><option value="http">http</option></select>
+      </label>
+      <label><span data-i18n="profiles.host">Host</span> <input id="profile-host" required autocomplete="off" placeholder="upstream.example"></label>
+      <label><span data-i18n="entry.port">Port</span> <input id="profile-port" type="number" min="1" max="65535" value="443"></label>
+      <button type="submit" data-i18n="profiles.add">Add profile</button>
+    </form>
   </section>
 
   <section id="tab-models" class="panel" hidden>
